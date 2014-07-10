@@ -93,7 +93,7 @@ class BasalAmygdala:
 		#~ self.inh_neurons.inj_freq = self.BtoIcurr_inj.freq
 		
 	
-	def create_context(self, name, associated_neurons=exc_neurons, sparseness=0.2, weight=0.05, spiking_rate=10*Hz):
+	def create_context(self, name, associated_neurons=exc_neurons, weight=0.05, spiking_rate=300*Hz):
 		"""
 		Creates a context with the given name, and connects a poisson
 		group to 20% of the excitation neurons. Also adds the context
@@ -101,7 +101,7 @@ class BasalAmygdala:
 		"""
 		if associated_neurons == None:
 			associated_neurons = self.exc_neurons
-		tmpctx = Context(name, associated_neurons, sparseness, weight)
+		tmpctx = Context(name, associated_neurons, weight, spiking_rate)
 		self.CTXs[name] = tmpctx
 		
 		self.network.add(tmpctx.poisson_gen, tmpctx.poisson_con)
@@ -143,21 +143,26 @@ class BasalAmygdala:
 	
 
 btest = BasalAmygdala(200, 40)
-bgctx_exc = btest.create_context('background_exc', btest.exc_neurons, 1.0, 0.02, 0.1)
-bgctx_inh = btest.create_context('background_inh', btest.inh_neurons, 1.0, 0.2, 13)
+bgctx_exc = btest.create_context('background_exc', btest.exc_neurons, 0.07)
+bgctx_inh = btest.create_context('background_inh', btest.inh_neurons, 0.1)
 #~ ext = btest.create_context('extinction')
 #~ btest.switch_context(ext)
 
 
 spiking_all = SpikeMonitor(btest.neurons)
-pmon = StateMonitor(btest.neurons, 'V', record=True)
-btest.network.add(pmon, spiking_all)
+voltage_all = StateMonitor(btest.neurons[195:205], 'V', record=True)
+poprate_exc = PopulationRateMonitor(btest.exc_neurons, bin=100*ms)
+poprate_inh = PopulationRateMonitor(btest.inh_neurons, bin=100*ms)
+btest.network.add(voltage_all, spiking_all, poprate_exc, poprate_inh)
 btest.run(1*second)
 
-#~ subplot(311)
-#~ raster_plot(Ms_inh)
-subplot(211)
+subplot(221)
+plot(poprate_exc.times, poprate_exc.rate)
+subplot(222)
+plot(poprate_inh.times, poprate_inh.rate)
+
+subplot(223)
 raster_plot(spiking_all)
-subplot(212)
-pmon.plot()
+subplot(224)
+voltage_all.plot()
 show()
