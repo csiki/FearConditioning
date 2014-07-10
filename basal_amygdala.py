@@ -3,7 +3,6 @@ from inspect import isfunction
 
 from context import *
 from lif_model import *
-from current_injection import *
 from conditional_stimulus import *
 
 class BasalAmygdala:
@@ -15,8 +14,6 @@ class BasalAmygdala:
 	Nexc = 3400
 	Ninh = 600
 	dt = 0.1*ms
-	BtoEcurr_inj = CurrentInjection(85*pA, 330*pA, 0.5*Hz)
-	BtoIcurr_inj = CurrentInjection(110*pA, 220*pA, 13*Hz)
 	neuron_model = LIFmodel()
 	neuro_modulators = [1.0] # vector of functions, or float numbers (use isfunction())
 	CTXs = {}
@@ -29,6 +26,8 @@ class BasalAmygdala:
 	Cie = None
 	Cii = None
 	curr_ctx = None
+	bg_exc_curr_inj = None
+	bg_inh_curr_inj = None
 	wmax = 1
 	wmin = 0
 	
@@ -59,7 +58,6 @@ class BasalAmygdala:
 		self.network.add(self.neurons)
 		
 		# group connectivity
-		# TODO what with Gexc?
 		self.Cee = Synapses(self.exc_neurons, target=self.exc_neurons, \
 			pre='Gexc_post += 0.1')
 		self.Cei = Synapses(self.exc_neurons, target=self.inh_neurons, \
@@ -73,27 +71,15 @@ class BasalAmygdala:
 		self.Cie.connect_random(sparseness=self.conn_prob['pIE'])
 		self.Cii.connect_random(sparseness=self.conn_prob['pII'])
 		
-		#~ self.Cee = Connection(self.exc_neurons, self.exc_neurons, 'Gexc', \
-			#~ sparseness=self.conn_prob['pEE'])
-		#~ self.Cei = Connection(self.exc_neurons, self.inh_neurons, 'Gexc', \
-			#~ sparseness=self.conn_prob['pEI'])
-		#~ self.Cie = Connection(self.inh_neurons, self.exc_neurons, 'Ginh', \
-			#~ sparseness=self.conn_prob['pIE'])
-		#~ self.Cii = Connection(self.inh_neurons, self.inh_neurons, 'Ginh', \
-			#~ sparseness=self.conn_prob['pII'])
+		self.network.add(self.Cee, self.Cei, self.Cie, self.Cii)
 		
-		#~ self.network.add(self.Cee, self.Cei, self.Cie, self.Cii)
-		
-		# background input parameters init
-		#~ self.exc_neurons.AC = self.BtoEcurr_inj.AC
-		#~ self.exc_neurons.DC = self.BtoEcurr_inj.DC
-		#~ self.exc_neurons.inj_freq = self.BtoEcurr_inj.freq
-		#~ self.inh_neurons.AC = self.BtoIcurr_inj.AC
-		#~ self.inh_neurons.DC = self.BtoIcurr_inj.DC
-		#~ self.inh_neurons.inj_freq = self.BtoIcurr_inj.freq
-		
+		# current injection using contexts
+		self.bg_exc_curr_inj = self.create_context('background_exc', self.exc_neurons, 1.0, 0.08)
+		self.bg_inh_curr_inj = self.create_context('background_inh', self.inh_neurons, 1.0, 0.12)
+		self.bg_exc_curr_inj.activate()
+		self.bg_inh_curr_inj.activate()
 	
-	def create_context(self, name, associated_neurons=exc_neurons, weight=0.05, spiking_rate=300*Hz):
+	def create_context(self, name, associated_neurons=None, sparseness=0.2, weight=0.05, spiking_rate=300*Hz):
 		"""
 		Creates a context with the given name, and connects a poisson
 		group to 20% of the excitation neurons. Also adds the context
@@ -101,14 +87,28 @@ class BasalAmygdala:
 		"""
 		if associated_neurons == None:
 			associated_neurons = self.exc_neurons
-		tmpctx = Context(name, associated_neurons, weight, spiking_rate)
-		self.CTXs[name] = tmpctx
 		
+		if sparseness < 1.0:
+			beg = randint(0, floor(len(associated_neurons) * (1 - sparseness)))
+			end = int(beg + floor(len(associated_neurons) * sparseness))
+			associated_neurons = associated_neurons[beg:end]
+		
+		tmpctx = Context(name, associated_neurons, weight, spiking_rate)
 		self.network.add(tmpctx.poisson_gen, tmpctx.poisson_con)
 		
 		return tmpctx
 	
-	def add_context(self, ctx):
+	def create_cs(self, associated_neurons, weight=0.05, spiking_rate=500*Hz, duration=50*ms):
+		"""
+		TODO
+		"""
+		tmpstim = ConditionalStimulus(associated_neurons, duration, \
+			spiking_rate, weight)
+		self.network.add(tmpstim.poisson_con, tmpstim.poisson_gen)
+		
+		return tmpstim
+	
+	def add_context(self, ctx): # TODO not sure if needed
 		"""
 		TODO
 		"""
@@ -118,8 +118,10 @@ class BasalAmygdala:
 		"""
 		TODO
 		"""
-		self.CTXs[to_ctx.name] = to_ctx
+		if self.curr_ctx != None:
+			self.curr_ctx.deactivate()
 		self.curr_ctx = to_ctx
+		self.curr_ctx.activate()
 			
 	def add_neuromodulator(self, neuro_mod):
 		"""
@@ -138,29 +140,49 @@ class BasalAmygdala:
 		TODO
 		"""
 		self.network.run(runtime, report='stdout')
+		# TODO ctx?
 	
 	# TODO def add_monitor or whatever
 	
 
+###############################################################
+##################### MAIN ####################################
+###############################################################
+
+# basal init
 btest = BasalAmygdala(200, 40)
-bgctx_exc = btest.create_context('background_exc', btest.exc_neurons, 0.07)
-bgctx_inh = btest.create_context('background_inh', btest.inh_neurons, 0.1)
-#~ ext = btest.create_context('extinction')
-#~ btest.switch_context(ext)
 
+# context, cs init
+ctx_ext = btest.create_context('extinction')
+ctx_fear = btest.create_context('fear')
+btest.add_context(ctx_ext)
+btest.add_context(ctx_fear)
+stim_ext = btest.create_cs(ctx_ext.associated_neurons)
+stim_fear = btest.create_cs(ctx_fear.associated_neurons)
 
+# monitor init
 spiking_all = SpikeMonitor(btest.neurons)
 voltage_all = StateMonitor(btest.neurons[195:205], 'V', record=True)
 poprate_exc = PopulationRateMonitor(btest.exc_neurons, bin=100*ms)
 poprate_inh = PopulationRateMonitor(btest.inh_neurons, bin=100*ms)
 btest.network.add(voltage_all, spiking_all, poprate_exc, poprate_inh)
-btest.run(1*second)
 
+# run
+btest.switch_context(ctx_fear)
+
+for i in range(5):
+	btest.run(100*ms)
+	stim_fear.activate()
+	btest.run(50*ms)
+	stim_fear.deactivate()
+
+btest.run(100*ms)
+
+# plots
 subplot(221)
 plot(poprate_exc.times, poprate_exc.rate)
 subplot(222)
 plot(poprate_inh.times, poprate_inh.rate)
-
 subplot(223)
 raster_plot(spiking_all)
 subplot(224)
