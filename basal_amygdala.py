@@ -51,40 +51,57 @@ class BasalAmygdala:
 		self.neurons = NeuronGroup(self.N, model=self.neuron_model.dynamics, \
 			threshold=self.neuron_model.Vt, reset=self.neuron_model.Ek, \
 			refractory=self.neuron_model.refractory)
-		
-		self.network.add(self.neurons)
+		self.neurons.V = uniform(self.neuron_model.E0, self.neuron_model.Vt, self.N)
 		
 		self.exc_neurons = self.neurons.subgroup(self.Nexc)
 		self.inh_neurons = self.neurons.subgroup(self.Ninh)
 		
-		# group connectivity
-		self.Cee = Connection(self.exc_neurons, self.exc_neurons, 'Gexc', \
-			sparseness=self.conn_prob['pEE'])
-		self.Cei = Connection(self.exc_neurons, self.inh_neurons, 'Gexc', \
-			sparseness=self.conn_prob['pEI'])
-		self.Cie = Connection(self.inh_neurons, self.exc_neurons, 'Ginh', \
-			sparseness=self.conn_prob['pIE'])
-		self.Cii = Connection(self.inh_neurons, self.inh_neurons, 'Ginh', \
-			sparseness=self.conn_prob['pII'])
+		self.network.add(self.neurons)
 		
-		self.network.add(self.Cee, self.Cei, self.Cie, self.Cii)
+		# group connectivity
+		# TODO what with Gexc?
+		self.Cee = Synapses(self.exc_neurons, target=self.exc_neurons, \
+			pre='Gexc_post += 0.1')
+		self.Cei = Synapses(self.exc_neurons, target=self.inh_neurons, \
+			pre='Gexc_post += 0.1')
+		self.Cie = Synapses(self.inh_neurons, target=self.exc_neurons, \
+			pre='Ginh_post += 4')
+		self.Cii = Synapses(self.inh_neurons, target=self.inh_neurons, \
+			pre='Ginh_post += 4')
+		self.Cee.connect_random(sparseness=self.conn_prob['pEE'])
+		self.Cei.connect_random(sparseness=self.conn_prob['pEI'])
+		self.Cie.connect_random(sparseness=self.conn_prob['pIE'])
+		self.Cii.connect_random(sparseness=self.conn_prob['pII'])
+		
+		#~ self.Cee = Connection(self.exc_neurons, self.exc_neurons, 'Gexc', \
+			#~ sparseness=self.conn_prob['pEE'])
+		#~ self.Cei = Connection(self.exc_neurons, self.inh_neurons, 'Gexc', \
+			#~ sparseness=self.conn_prob['pEI'])
+		#~ self.Cie = Connection(self.inh_neurons, self.exc_neurons, 'Ginh', \
+			#~ sparseness=self.conn_prob['pIE'])
+		#~ self.Cii = Connection(self.inh_neurons, self.inh_neurons, 'Ginh', \
+			#~ sparseness=self.conn_prob['pII'])
+		
+		#~ self.network.add(self.Cee, self.Cei, self.Cie, self.Cii)
 		
 		# background input parameters init
-		self.exc_neurons.AC = self.BtoEcurr_inj.AC
-		self.exc_neurons.DC = self.BtoEcurr_inj.DC
-		self.exc_neurons.inj_freq = self.BtoEcurr_inj.freq
-		self.inh_neurons.AC = self.BtoIcurr_inj.AC
-		self.inh_neurons.DC = self.BtoIcurr_inj.DC
-		self.inh_neurons.inj_freq = self.BtoIcurr_inj.freq
+		#~ self.exc_neurons.AC = self.BtoEcurr_inj.AC
+		#~ self.exc_neurons.DC = self.BtoEcurr_inj.DC
+		#~ self.exc_neurons.inj_freq = self.BtoEcurr_inj.freq
+		#~ self.inh_neurons.AC = self.BtoIcurr_inj.AC
+		#~ self.inh_neurons.DC = self.BtoIcurr_inj.DC
+		#~ self.inh_neurons.inj_freq = self.BtoIcurr_inj.freq
 		
 	
-	def create_context(self, name):
+	def create_context(self, name, associated_neurons=exc_neurons, sparseness=0.2, weight=0.05, spiking_rate=10*Hz):
 		"""
 		Creates a context with the given name, and connects a poisson
 		group to 20% of the excitation neurons. Also adds the context
 		to CTXs, indexed by name.
 		"""
-		tmpctx = Context(name, self.exc_neurons)
+		if associated_neurons == None:
+			associated_neurons = self.exc_neurons
+		tmpctx = Context(name, associated_neurons, sparseness, weight)
 		self.CTXs[name] = tmpctx
 		
 		self.network.add(tmpctx.poisson_gen, tmpctx.poisson_con)
@@ -125,21 +142,22 @@ class BasalAmygdala:
 	# TODO def add_monitor or whatever
 	
 
-btest = BasalAmygdala()
-ext = btest.create_context('extinction')
-btest.switch_context(ext)
+btest = BasalAmygdala(200, 40)
+bgctx_exc = btest.create_context('background_exc', btest.exc_neurons, 1.0, 0.02, 0.1)
+bgctx_inh = btest.create_context('background_inh', btest.inh_neurons, 1.0, 0.2, 13)
+#~ ext = btest.create_context('extinction')
+#~ btest.switch_context(ext)
 
-Ms_exc = SpikeMonitor(btest.neurons)																																																			
-Ms_inh = SpikeMonitor(btest.inh_neurons)
 
+spiking_all = SpikeMonitor(btest.neurons)
 pmon = StateMonitor(btest.neurons, 'V', record=True)
-btest.network.add(pmon, Ms_exc, Ms_inh)
-btest.run(0.2*second)
+btest.network.add(pmon, spiking_all)
+btest.run(1*second)
 
 #~ subplot(311)
 #~ raster_plot(Ms_inh)
 subplot(211)
-raster_plot(Ms_exc.vec)
+raster_plot(spiking_all)
 subplot(212)
 pmon.plot()
 show()

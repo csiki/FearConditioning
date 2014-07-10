@@ -4,9 +4,9 @@ class LIFmodel:
 	"""
 	TODO
 	"""
-	Vt = -57*mV 	 # threshold
+	Vt = -55*mV 	 # threshold
 	refractory = 2*ms # clamping time
-	Ek = -90*mV 	 # reset potential
+	Ek = -65*mV 	 # reset potential
 	E0 = -65*mV 	 # resting potential
 	Eexc = 0*mV
 	Einh = -80*mV
@@ -19,11 +19,12 @@ class LIFmodel:
 	tau2inh = 0
 	# TODO Gexc, Ginh fix eq
 	# Ibg = AC*sin(inj_freq*t)+DC : 1
+	Ibg = 0
 	dynamics = Equations('''
 		dV/dt = ((E0 - V) + Gexc * (Eexc - V) + Ginh * (Einh - V) + Ibg) / taum : volt
 		dGexc/dt = -Gexc/tau1exc : 1
 		dGinh/dt = -Ginh/tau1inh : 1
-		Ibg = AC*exp(inj_freq*t)+DC : volt
+		Ibg : volt
 		AC : volt
 		DC : volt
 		inj_freq : 1''', \
