@@ -4,6 +4,7 @@ from inspect import isfunction
 from context import *
 from lif_model import *
 from conditional_stimulus import *
+from behavior import *
 
 class BasalAmygdala:
 	"""
@@ -16,7 +17,6 @@ class BasalAmygdala:
 	dt = 0.1*ms
 	neuron_model = LIFmodel()
 	neuro_modulators = [1.0] # vector of functions, or float numbers (use isfunction())
-	CTXs = {}
 	network = Network()
 	neurons = None
 	exc_neurons = None
@@ -28,6 +28,8 @@ class BasalAmygdala:
 	curr_ctx = None
 	bg_exc_curr_inj = None
 	bg_inh_curr_inj = None
+	lrate_pot = 16e-4
+	lrate_depot = -16e-4
 	wmax = 1
 	wmin = 0
 	
@@ -73,17 +75,19 @@ class BasalAmygdala:
 		
 		self.network.add(self.Cee, self.Cei, self.Cie, self.Cii)
 		
-		# current injection using contexts
-		self.bg_exc_curr_inj = self.create_context('background_exc', self.exc_neurons, 1.0, 0.08)
-		self.bg_inh_curr_inj = self.create_context('background_inh', self.inh_neurons, 1.0, 0.12)
+		# background current injection using contexts
+		self.bg_exc_curr_inj = self.create_context('background_exc', \
+			self.exc_neurons, 1.0, 300*Hz, 0.08)
+		self.bg_inh_curr_inj = self.create_context('background_inh', \
+			self.inh_neurons, 1.0, 300*Hz, 0.18)
 		self.bg_exc_curr_inj.activate()
 		self.bg_inh_curr_inj.activate()
 	
-	def create_context(self, name, associated_neurons=None, sparseness=0.2, weight=0.05, spiking_rate=300*Hz):
+	def create_context(self, name, associated_neurons=None, sparseness=0.2, spiking_rate=300*Hz, weight=None):
 		"""
 		Creates a context with the given name, and connects a poisson
-		group to 20% of the excitation neurons. Also adds the context
-		to CTXs, indexed by name.
+		group to [sparseness]% of the excitation neurons. Also adds the
+		context to CTXs, indexed by name.
 		"""
 		if associated_neurons == None:
 			associated_neurons = self.exc_neurons
@@ -93,26 +97,20 @@ class BasalAmygdala:
 			end = int(beg + floor(len(associated_neurons) * sparseness))
 			associated_neurons = associated_neurons[beg:end]
 		
-		tmpctx = Context(name, associated_neurons, weight, spiking_rate)
+		tmpctx = Context(name, associated_neurons, spiking_rate, weight)
 		self.network.add(tmpctx.poisson_gen, tmpctx.poisson_con)
 		
 		return tmpctx
 	
-	def create_cs(self, associated_neurons, weight=0.05, spiking_rate=500*Hz, duration=50*ms):
+	def create_cs(self, associated_neurons, spiking_rate=500*Hz, duration=50*ms):
 		"""
 		TODO
 		"""
 		tmpstim = ConditionalStimulus(associated_neurons, duration, \
-			spiking_rate, weight)
+			spiking_rate)
 		self.network.add(tmpstim.poisson_con, tmpstim.poisson_gen)
 		
 		return tmpstim
-	
-	def add_context(self, ctx): # TODO not sure if needed
-		"""
-		TODO
-		"""
-		self.CTXs[ctx.name] = ctx
 	
 	def switch_context(self, to_ctx):
 		"""
@@ -129,20 +127,71 @@ class BasalAmygdala:
 		"""
 		self.neuro_modulators.append(neuro_mod)
 	
-	def present_stimulus(self, CS, US='extinction'):
+	def present_stimulus(self, CScurr, CSother, **runargs):
 		"""
 		TODO
 		"""
-		pass
+		# constants
+		tauc = 10*ms
+		tauh = 10*ms
+		binsize = 1*ms
+		
+		# create monitors
+		sm_cscurr  = SpikeMonitor(CScurr.poisson_gen)
+		sm_csother = SpikeMonitor(CSother.poisson_gen)
+		sm_ctxcurr = SpikeMonitor(self.curr_ctx.poisson_gen)
+		self.network.add(sm_cscurr, sm_csother, sm_ctxcurr)
+		curr_time = self.neurons.t[0]
+		
+		# present stimulus
+		CScurr.activate()
+		CSother.activate()
+		self.network.run(CScurr.duration, **runargs)
+		CScurr.deactivate()
+		CSother.deactivate()
+		
+		# create refs to spiketimes
+		dic_cscurr = sm_cscurr.spiketimes
+		dic_csother = sm_csother.spiketimes
+		dic_ctxcurr = sm_ctxcurr.spiketimes
+		
+		# substract first element from arrays
+		for i in range(len(dic_cscurr)):
+			dic_cscurr[i] -= curr_time
+		for i in range(len(dic_csother)):
+			dic_csother[i] -= curr_time
+		for i in range(len(dic_ctxcurr)):
+			dic_ctxcurr[i] -= curr_time
+		
+		# histograms & convolution
+		c_exp = array([exp(-x*ms/tauc) for x in arange(0., CScurr.duration / ms, 1.)])
+		h_exp = array([exp(-x*ms/tauh) for x in arange(0., CScurr.duration / ms, 1.)])
+		arr_curr  = zeros(len(dic_cscurr))
+		arr_other = zeros(len(dic_csother))
+		
+		for i in range(len(dic_cscurr)):
+			arr_curr[i] = dot(convolve(c_exp, histogram(dic_cscurr[i], \
+				int(CScurr.duration / ms), range=(0., float(CScurr.duration / second)))[0]), \
+				convolve(h_exp, histogram(dic_ctxcurr[i], \
+				int(CScurr.duration / ms), range=(0., float(CScurr.duration / second)))[0]))
+		for i in range(len(dic_csother)):
+			arr_other[i] = sum(convolve(c_exp, histogram(dic_csother[i], \
+				int(CSother.duration / ms), range=(0., float(CSother.duration / second)))[0]))
+			
+		# update weights
+		CScurr.update_weight(arr_curr, 0, self.neuro_modulators, self.wmax, self.lrate_pot)
+		CSother.update_weight(arr_other, 0, self.neuro_modulators, self.wmin, self.lrate_depot)
+		self.curr_ctx.update_weight(arr_curr, 0, self.neuro_modulators, self.wmax, self.lrate_pot)
+		
+		# remove monitors
+		self.network.remove(sm_cscurr, sm_csother, sm_ctxcurr)
+		
 	
-	def run(self, runtime):
+	def run(self, runtime, **args):
 		"""
-		TODO
+		Runs the system for the given time.
 		"""
-		self.network.run(runtime, report='stdout')
-		# TODO ctx?
-	
-	# TODO def add_monitor or whatever
+		self.network.run(runtime, **args)
 	
 
 ###############################################################
@@ -155,8 +204,6 @@ btest = BasalAmygdala(200, 40)
 # context, cs init
 ctx_ext = btest.create_context('extinction')
 ctx_fear = btest.create_context('fear')
-btest.add_context(ctx_ext)
-btest.add_context(ctx_fear)
 stim_ext = btest.create_cs(ctx_ext.associated_neurons)
 stim_fear = btest.create_cs(ctx_fear.associated_neurons)
 
@@ -168,15 +215,7 @@ poprate_inh = PopulationRateMonitor(btest.inh_neurons, bin=100*ms)
 btest.network.add(voltage_all, spiking_all, poprate_exc, poprate_inh)
 
 # run
-btest.switch_context(ctx_fear)
-
-for i in range(5):
-	btest.run(100*ms)
-	stim_fear.activate()
-	btest.run(50*ms)
-	stim_fear.deactivate()
-
-btest.run(100*ms)
+fear_conditioning(btest, stim_fear, stim_ext, ctx_fear, ctx_ext)
 
 # plots
 subplot(221)
