@@ -28,7 +28,7 @@ class BasalAmygdala:
 	curr_ctx = None
 	bg_exc_curr_inj = None
 	bg_inh_curr_inj = None
-	lrate_pot = 16e-4
+	lrate_pot = 1e-4
 	lrate_depot = -16e-4
 	wmax = 1
 	wmin = 0
@@ -194,36 +194,38 @@ class BasalAmygdala:
 		self.network.run(runtime, **args)
 	
 
+
 ###############################################################
 ##################### MAIN ####################################
 ###############################################################
+if __name__ == '__main__':
+	
+	# basal init
+	btest = BasalAmygdala()
 
-# basal init
-btest = BasalAmygdala(200, 40)
+	# context, cs init
+	ctx_ext = btest.create_context('extinction')
+	ctx_fear = btest.create_context('fear')
+	stim_ext = btest.create_cs(ctx_ext.associated_neurons)
+	stim_fear = btest.create_cs(ctx_fear.associated_neurons)
 
-# context, cs init
-ctx_ext = btest.create_context('extinction')
-ctx_fear = btest.create_context('fear')
-stim_ext = btest.create_cs(ctx_ext.associated_neurons)
-stim_fear = btest.create_cs(ctx_fear.associated_neurons)
+	# monitor init
+	spiking_all = SpikeMonitor(btest.neurons)
+	voltage_all = StateMonitor(btest.neurons[195:205], 'V', record=True)
+	poprate_exc = PopulationRateMonitor(ctx_fear.associated_neurons, bin=10*ms)
+	poprate_inh = PopulationRateMonitor(ctx_ext.associated_neurons, bin=10*ms)
+	btest.network.add(voltage_all, spiking_all, poprate_exc, poprate_inh)
 
-# monitor init
-spiking_all = SpikeMonitor(btest.neurons)
-voltage_all = StateMonitor(btest.neurons[195:205], 'V', record=True)
-poprate_exc = PopulationRateMonitor(btest.exc_neurons, bin=100*ms)
-poprate_inh = PopulationRateMonitor(btest.inh_neurons, bin=100*ms)
-btest.network.add(voltage_all, spiking_all, poprate_exc, poprate_inh)
+	# run
+	fear_conditioning(btest, stim_fear, stim_ext, ctx_fear, ctx_ext)
 
-# run
-fear_conditioning(btest, stim_fear, stim_ext, ctx_fear, ctx_ext)
-
-# plots
-subplot(221)
-plot(poprate_exc.times, poprate_exc.rate)
-subplot(222)
-plot(poprate_inh.times, poprate_inh.rate)
-subplot(223)
-raster_plot(spiking_all)
-subplot(224)
-voltage_all.plot()
-show()
+	# plots
+	subplot(221)
+	plot(poprate_exc.times, poprate_exc.rate)
+	subplot(222)
+	plot(poprate_inh.times, poprate_inh.rate)
+	subplot(223)
+	raster_plot(spiking_all)
+	subplot(224)
+	voltage_all.plot()
+	show()
