@@ -59,19 +59,42 @@ class BasalAmygdala:
 		
 		self.network.add(self.neurons)
 		
+		# plastic connection I->E equations
+		stdp_eqns = ''' w : 1
+		dApre/dt=-Apre/Apre_tau : 1
+		dApost/dt=-Apost/Apost_tau : 1
+		Apre_tau : ms
+		Apost_tau : ms
+		Apre0 : 1
+		Apost0 : 1
+		eta : 1
+		wmax : 1
+		'''
+		pre_eqns = 'Ginh_post += w; Apre+=Apre0; w+=-Apost*eta; w=clip(w,0,wmax);'
+		post_eqns = 'Apost+=Apost0; w+=Apre*eta; wsyn=clip(w,0,wmax)'
+		
 		# group connectivity
 		self.Cee = Synapses(self.exc_neurons, target=self.exc_neurons, \
 			pre='Gexc_post += 0.1')
 		self.Cei = Synapses(self.exc_neurons, target=self.inh_neurons, \
 			pre='Gexc_post += 0.1')
 		self.Cie = Synapses(self.inh_neurons, target=self.exc_neurons, \
-			pre='Ginh_post += 4')
+			pre=pre_eqns, post=post_eqns, model=stdp_eqns)
 		self.Cii = Synapses(self.inh_neurons, target=self.inh_neurons, \
-			pre='Ginh_post += 4')
+			pre='Ginh_post += 4.0')
 		self.Cee.connect_random(sparseness=self.conn_prob['pEE'])
 		self.Cei.connect_random(sparseness=self.conn_prob['pEI'])
 		self.Cie.connect_random(sparseness=self.conn_prob['pIE'])
 		self.Cii.connect_random(sparseness=self.conn_prob['pII'])
+		
+		# plastic connection I->E parameters
+		self.Cie.w = 4.0
+		self.Cie.wmax = 4.0
+		self.Cie.Apre_tau = 40*ms
+		self.Cie.Apost_tau = 20*ms
+		self.Cie.Apre0 = 1.0
+		self.Cie.Apost0 = 0.5
+		self.Cie.eta = 2.0
 		
 		self.network.add(self.Cee, self.Cei, self.Cie, self.Cii)
 		
@@ -200,8 +223,11 @@ class BasalAmygdala:
 ###############################################################
 if __name__ == '__main__':
 	
+	# set seed
+	seed(100)
+	
 	# basal init
-	btest = BasalAmygdala()
+	btest = BasalAmygdala(200, 40)
 
 	# context, cs init
 	ctx_ext = btest.create_context('extinction')
