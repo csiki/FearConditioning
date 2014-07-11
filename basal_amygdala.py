@@ -14,6 +14,7 @@ class BasalAmygdala:
 	N    = 4000
 	Nexc = 3400
 	Ninh = 600
+	plastic_inh = True
 	dt = 0.1*ms
 	neuron_model = LIFmodel()
 	neuro_modulators = [1.0] # vector of functions, or float numbers (use isfunction())
@@ -33,7 +34,7 @@ class BasalAmygdala:
 	wmax = 1
 	wmin = 0
 	
-	def __init__(self, Nexc=Nexc, Ninh=Ninh, neuron_model=neuron_model, dt=dt, **connection_prob):
+	def __init__(self, Nexc=Nexc, Ninh=Ninh, neuron_model=neuron_model, dt=dt, plastic_inh = plastic_inh, **connection_prob):
 		"""
 		TODO
 		"""
@@ -47,6 +48,7 @@ class BasalAmygdala:
 		self.Ninh = Ninh
 		self.N = Nexc + Ninh
 		self.neuron_model = neuron_model
+		self.plastic_inh = plastic_inh
 		
 		# neuron group initaliziation
 		self.neurons = NeuronGroup(self.N, model=self.neuron_model.dynamics, \
@@ -78,8 +80,12 @@ class BasalAmygdala:
 			pre='Gexc_post += 0.1')
 		self.Cei = Synapses(self.exc_neurons, target=self.inh_neurons, \
 			pre='Gexc_post += 0.1')
-		self.Cie = Synapses(self.inh_neurons, target=self.exc_neurons, \
-			pre=pre_eqns, post=post_eqns, model=stdp_eqns)
+		if plastic_inh:
+			self.Cie = Synapses(self.inh_neurons, target=self.exc_neurons, \
+				pre=pre_eqns, post=post_eqns, model=stdp_eqns) # plastic
+		else:
+			self.Cie = Synapses(self.inh_neurons, target=self.exc_neurons, \
+				pre='Ginh_post += 4.0') # not plastic
 		self.Cii = Synapses(self.inh_neurons, target=self.inh_neurons, \
 			pre='Ginh_post += 4.0')
 		self.Cee.connect_random(sparseness=self.conn_prob['pEE'])
@@ -89,7 +95,7 @@ class BasalAmygdala:
 		
 		# plastic connection I->E parameters
 		self.Cie.w = 4.0
-		self.Cie.wmax = 4.0
+		self.Cie.wmax = 6.0
 		self.Cie.Apre_tau = 40*ms
 		self.Cie.Apost_tau = 20*ms
 		self.Cie.Apre0 = 1.0
@@ -224,10 +230,10 @@ class BasalAmygdala:
 if __name__ == '__main__':
 	
 	# set seed
-	seed(100)
+	seed(1000)
 	
 	# basal init
-	btest = BasalAmygdala(200, 40)
+	btest = BasalAmygdala(200, 40, plastic_inh=True)
 
 	# context, cs init
 	ctx_ext = btest.create_context('extinction')
