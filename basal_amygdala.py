@@ -217,7 +217,8 @@ if __name__ == '__main__':
 	btest.network.add(voltage_all, spiking_all, poprate_exc, poprate_inh)
 
 	# run
-	fear_conditioning(btest, stim_fear, stim_ext, ctx_fear, ctx_ext)
+	#fear_conditioning(btest, stim_fear, stim_ext, ctx_fear, ctx_ext)
+	fear_renewal(btest, stim_fear, stim_ext, ctx_fear, ctx_ext)
 
 	# plots
 	subplot(221)
