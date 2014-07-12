@@ -7,9 +7,7 @@ class Context:
 	"""
 	name = ''
 	spiking_rate = 300*Hz
-	#~ lrate_pot   = 16e-4
-	#~ lrate_depot = -16e-4 # TODO needed?
-	weight = None # TODO mx?
+	weight = None
 	associated_neurons = None
 	poisson_gen = None
 	poisson_con = None
@@ -40,7 +38,7 @@ class Context:
 		"""
 		TODO
 		"""
-		m = 1 # TODO neuro_modulators ?
+		m = 1 # TODO neuromodulators
 		self.poisson_con.w[:,:] += delta * lrate_pot * m * abs(self.poisson_con.w[:,:] - wextreme)
 	
 	def activate(self):

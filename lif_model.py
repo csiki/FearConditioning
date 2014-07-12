@@ -8,11 +8,11 @@ class LIFmodel:
 	refractory = 2*ms # clamping time
 	Ek = -65*mV 	  # reset potential
 	E0 = -65*mV 	  # resting potential
-	Eexc = 0*mV
-	Einh = -80*mV
-	taum = 20*ms
-	tauexc = 5*ms
-	tauinh = 10*ms
+	Eexc = 0*mV		  # reversal potential for excitatory synapses
+	Einh = -80*mV	  # reversal potential for inhibitory synapses
+	taum = 20*ms	  # membrane timeconstant
+	tauexc = 5*ms	  # excitatory timeconstant
+	tauinh = 10*ms	  # inhibitory timeconstant
 	dynamics = Equations('''
 		dV/dt = ((E0 - V) + Gexc * (Eexc - V) + Ginh * (Einh - V)) / taum : volt
 		dGexc/dt = -Gexc/tauexc : 1

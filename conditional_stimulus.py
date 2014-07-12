@@ -9,12 +9,8 @@ class ConditionalStimulus:
 	associated_neurons = None
 	duration = 50*ms
 	spiking_rate = 500*Hz
-	#~ lrate_pot   = 16e-4 # TODO needed?
-	#~ lrate_depot = -16e-4
 	poisson_gen = None
 	poisson_con = None
-	c = None # TODO mx?
-	h = None
 	
 	def __init__(self, associated_neurons, duration=duration, spiking_rate=spiking_rate):
 		"""
